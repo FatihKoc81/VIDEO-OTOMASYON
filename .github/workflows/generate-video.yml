@@ -1,0 +1,33 @@
+name: Generate Turkish short video
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install system tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fonts-dejavu-core
+          python -m pip install -r requirements.txt
+      - name: Generate video
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+        run: python video_pipeline.py
+      - name: Upload generated video
+        uses: actions/upload-artifact@v4
+        with:
+          name: turkce-kisa-video
+          path: |
+            output/video.mp4
+            output/metadata.json
+          retention-days: 3
