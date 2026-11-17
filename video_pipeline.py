@@ -6,11 +6,11 @@ OPENAI_KEY=os.environ["OPENAI_API_KEY"]; PIXABAY_KEY=os.environ["PIXABAY_API_KEY
 def post(url, body, timeout=180):
     r=requests.post(url,json=body,headers={"Authorization":"Bearer "+OPENAI_KEY},timeout=timeout); r.raise_for_status(); return r
 def make_story():
-    prompt='Türkçe kısa video için yeni ve ilgi çekici bir konu seç. 45-60 saniyelik, doğrulanabilir anlatım yaz. Yalnızca JSON döndür: {"title":"başlık","script":"105-130 kelimelik Türkçe seslendirme metni","pixabay_query":"2-4 İngilizce arama kelimesi"}. Giriş merak uyandırsın, sonunda şaşırtıcı bilgi veya soru olsun. Konuları çeşitlendir.'
+    prompt='Türkçe sosyal medya kısa videosu için özgün, doğrulanabilir ve görsel olarak anlatılabilir bir konu seç. 45-60 saniyelik anlatım yaz. İlk cümle ilk 2 saniyede güçlü merak uyandırsın; klişe giriş kullanma. Metin 105-130 kelime olsun, kısa ve konuşma dilinde cümleler kur. Her 1-2 cümlede yeni görsel kullanılabilecek somut sahne/nesne olsun. Sonda yorum yazdıracak tek soru sor. Ayrıca 1) 5-8 kelimelik vurucu video başlığı, 2) TikTok/YouTube için doğal kısa açıklama ve 3-5 alakalı hashtag, 3) Pixabay için 3-5 İngilizce arama kelimesi üret. Yalnızca JSON döndür: {"title":"başlık","script":"seslendirme metni","caption":"açıklama ve hashtagler","pixabay_query":"English search terms"}. Politik propaganda, doğrulanmamış iddia ve clickbait yalan kullanma.'
     j=post("https://api.openai.com/v1/chat/completions",{"model":"gpt-4o-mini","temperature":0.95,"messages":[{"role":"system","content":"Güvenilir Türkçe kısa video senaristisin. Sadece JSON üret."},{"role":"user","content":prompt}]}).json()
     raw=j["choices"][0]["message"]["content"].strip().strip(chr(96)).replace("json","",1).strip()
     obj=json.loads(raw)
-    for k in ("title","script","pixabay_query"):
+    for k in ("title","script","caption","pixabay_query"):
         if not obj.get(k): raise ValueError("Eksik alan: "+k)
     return obj
 def get_audio(script):
@@ -30,9 +30,9 @@ def stamp(t):
     n=int(t*1000); h=n//3600000; n%=3600000; m=n//60000; n%=60000; s=n//1000; n%=1000
     return "%02d:%02d:%02d,%03d"%(h,m,s,n)
 def captions(script,total):
-    words=script.split(); chunks=[" ".join(words[i:i+7]) for i in range(0,len(words),7)]; weights=[len(c.split()) for c in chunks]; denom=sum(weights); pos=0; out=[]
+    words=script.split(); chunks=[" ".join(words[i:i+5]) for i in range(0,len(words),5)]; weights=[len(c.split()) for c in chunks]; denom=sum(weights); pos=0; out=[]
     for i,(c,w) in enumerate(zip(chunks,weights),1):
-        end=total*sum(weights[:i])/denom; out += [str(i),stamp(pos)+" --> "+stamp(end),textwrap.fill(c,34), ""]; pos=end
+        end=total*sum(weights[:i])/denom; out += [str(i),stamp(pos)+" --> "+stamp(end),textwrap.fill(c,25), ""]; pos=end
     p=OUT/"captions.srt"; p.write_text("\n".join(out),encoding="utf-8"); return p
 def main():
     story=make_story(); (OUT/"metadata.json").write_text(json.dumps(story,ensure_ascii=False,indent=2),encoding="utf-8")
@@ -46,7 +46,7 @@ def main():
     listing=OUT/"concat.txt"; listing.write_text("".join("file '"+str(p.resolve())+"'\n" for p in segments),encoding="utf-8")
     silent=OUT/"silent.mp4"; subprocess.run(["ffmpeg","-y","-f","concat","-safe","0","-i",str(listing),"-c","copy",str(silent)],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
     srt=captions(story["script"],total); final=OUT/"video.mp4"
-    vf="subtitles="+str(srt.resolve())+":force_style='FontName=DejaVu Sans,FontSize=18,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=1,Alignment=2,MarginV=150'"
+    title_srt=OUT/"title.srt"; title_srt.write_text("1\\n00:00:00,000 --> 00:00:03,000\\n"+textwrap.fill(story["title"],22)+"\\n",encoding="utf-8")\n    vf="subtitles="+str(srt.resolve())+":force_style='FontName=DejaVu Sans,FontSize=38,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&H00101010,BorderStyle=1,Outline=4,Shadow=1,Alignment=2,MarginV=190',subtitles="+str(title_srt.resolve())+":force_style='FontName=DejaVu Sans,FontSize=54,Bold=1,PrimaryColour=&H0000D7FF,OutlineColour=&H00000000,BorderStyle=1,Outline=5,Shadow=2,Alignment=8,MarginV=300'"
     subprocess.run(["ffmpeg","-y","-i",str(silent),"-i",str(audio),"-vf",vf,"-map","0:v:0","-map","1:a:0","-t",str(total),"-c:v","libx264","-preset","veryfast","-pix_fmt","yuv420p","-c:a","aac","-b:a","160k","-movflags","+faststart",str(final)],check=True)
-    print(json.dumps({"title":story["title"],"query":story["pixabay_query"],"seconds":round(total,1)},ensure_ascii=False))
+    print(json.dumps({"title":story["title"],"caption":story["caption"],"query":story["pixabay_query"],"seconds":round(total,1)},ensure_ascii=False))
 if __name__=="__main__": main()
