@@ -46,7 +46,7 @@ def main():
     listing=OUT/"concat.txt"; listing.write_text("".join("file '"+str(p.resolve())+"'\n" for p in segments),encoding="utf-8")
     silent=OUT/"silent.mp4"; subprocess.run(["ffmpeg","-y","-f","concat","-safe","0","-i",str(listing),"-c","copy",str(silent)],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
     srt=captions(story["script"],total); final=OUT/"video.mp4"
-    title_srt=OUT/"title.srt"; title_srt.write_text("1\\n00:00:00,000 --> 00:00:03,000\\n"+textwrap.fill(story["title"],22)+"\\n",encoding="utf-8")
+    title_srt=OUT/"title.srt"; title_srt.write_text("1\n00:00:00,000 --> 00:00:03,000\n"+textwrap.fill(story["title"],22)+"\n",encoding="utf-8")
     vf="subtitles="+str(srt.resolve())+":force_style='FontName=DejaVu Sans,FontSize=38,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&H00101010,BorderStyle=1,Outline=4,Shadow=1,Alignment=2,MarginV=190',subtitles="+str(title_srt.resolve())+":force_style='FontName=DejaVu Sans,FontSize=54,Bold=1,PrimaryColour=&H0000D7FF,OutlineColour=&H00000000,BorderStyle=1,Outline=5,Shadow=2,Alignment=8,MarginV=300'"
     subprocess.run(["ffmpeg","-y","-i",str(silent),"-i",str(audio),"-vf",vf,"-map","0:v:0","-map","1:a:0","-t",str(total),"-c:v","libx264","-preset","veryfast","-pix_fmt","yuv420p","-c:a","aac","-b:a","160k","-movflags","+faststart",str(final)],check=True)
     print(json.dumps({"title":story["title"],"caption":story["caption"],"query":story["pixabay_query"],"seconds":round(total,1)},ensure_ascii=False))
