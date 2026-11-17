@@ -1,0 +1,32 @@
+name: Video render test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  render-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Create sample vertical video
+        run: |
+          mkdir -p output
+          ffmpeg -y \
+            -f lavfi -i "color=c=0x101820:s=1080x1920:r=30:d=8" \
+            -vf "drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='VIDEO OTOMASYON':fontcolor=white:fontsize=72:x=(w-text_w)/2:y=h*0.42,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:text='Render altyapisi test edildi':fontcolor=0x9FE7D7:fontsize=42:x=(w-text_w)/2:y=h*0.52" \
+            -c:v libx264 -pix_fmt yuv420p -movflags +faststart output/test-video.mp4
+
+      - name: Upload test MP4
+        uses: actions/upload-artifact@v4
+        with:
+          name: video-otomasyon-test
+          path: output/test-video.mp4
+          retention-days: 3
