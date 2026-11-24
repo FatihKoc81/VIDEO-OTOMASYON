@@ -83,6 +83,32 @@ class PureTests(unittest.TestCase):
             dp.translate_local([dp.Segment(0, 1, "x")], "xx")
         self.assertEqual(dp.NLLB_CODES["en"], "eng_Latn")
 
+    def test_retry_wait(self):
+        self.assertEqual(dp.retry_wait(429, "7", 0), 7.0)
+        self.assertEqual(dp.retry_wait(429, None, 1), 10.0)
+        self.assertEqual(dp.retry_wait(503, "999", 0), 60.0)
+        self.assertIsNone(dp.retry_wait(401, None, 0))
+        self.assertIsNone(dp.retry_wait(200, None, 0))
+
+    def test_translate_any_falls_back_to_local(self):
+        segs = [dp.Segment(0, 1, "hi")]
+        old = os.environ.get("DUB_LLM_API_KEY")
+        os.environ["DUB_LLM_API_KEY"] = "gsk-test"
+        try:
+            def bad(*_):
+                raise RuntimeError("HTTP 429")
+
+            def local(ss, _):
+                ss[0].tr = "merhaba"
+                return ss
+            dp.translate_any(segs, "en", llm_fn=bad, local_fn=local)
+            self.assertEqual(segs[0].tr, "merhaba")
+        finally:
+            if old is None:
+                os.environ.pop("DUB_LLM_API_KEY", None)
+            else:
+                os.environ["DUB_LLM_API_KEY"] = old
+
     def test_stamp(self):
         self.assertEqual(dp.stamp(3725.5), "01:02:05,500")
 

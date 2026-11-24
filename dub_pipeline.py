@@ -24,7 +24,7 @@ SAMPLE_RATE = 24000
 MAX_SPEEDUP = float(os.environ.get("DUB_MAX_SPEEDUP", "1.45"))
 MAX_DOWNLOAD_BYTES = 500 * 1024 * 1024
 MAX_SECONDS = float(os.environ.get("DUB_MAX_SECONDS", "900"))
-TRANSLATE_BATCH = 30
+TRANSLATE_BATCH = 20  # Groq ücretsiz katmanının dakikalık token sınırına sığar
 
 
 @dataclass
@@ -133,7 +133,7 @@ def llm_config():
     if not key:
         raise RuntimeError("API ile çeviri için DUB_LLM_API_KEY gerekli.")
     base = os.environ.get("DUB_LLM_BASE_URL", "https://api.groq.com/openai/v1").rstrip("/")
-    model = os.environ.get("DUB_LLM_MODEL", "llama-3.3-70b-versatile")
+    model = os.environ.get("DUB_LLM_MODEL", "openai/gpt-oss-120b")
     return base, model, key
 
 
@@ -187,10 +187,16 @@ def translate_local(segments, source_lang, batch=16):
     return segments
 
 
-def translate_any(segments, source_lang):
+def translate_any(segments, source_lang, llm_fn=None, local_fn=None):
+    llm_fn = llm_fn or translate
+    local_fn = local_fn or translate_local
     if choose_translator() == "llm":
-        return translate(segments, source_lang)
-    return translate_local(segments, source_lang)
+        try:
+            return llm_fn(segments, source_lang)
+        except (RuntimeError, ValueError, KeyError) as e:
+            print("UYARI: API ile çeviri olmadı (%s); yerel çeviriye geçiliyor." % redact(e),
+                  flush=True)
+    return local_fn(segments, source_lang)
 
 
 def build_translate_messages(items, source_lang):
@@ -217,16 +223,39 @@ def parse_translation(raw, expected_ids):
     return {i: got[i] for i in expected_ids}
 
 
-def chat(messages, timeout=180):
+def retry_wait(status, retry_after, attempt):
+    """429/5xx için bekleme süresi (sn); None = yeniden deneme yok."""
+    if status != 429 and status < 500:
+        return None
+    try:
+        wait = float(retry_after)
+    except (TypeError, ValueError):
+        wait = 5.0 * (2 ** attempt)
+    return min(max(wait, 1.0), 60.0)
+
+
+def chat(messages, timeout=180, attempts=5, sleep=None):
+    import time
+
+    sleep = sleep or time.sleep
     base, model, key = llm_config()
     body = {"model": model, "temperature": 0.3, "messages": messages}
-    try:
-        r = requests.post(base + "/chat/completions", json=body, timeout=timeout,
-                          headers={"Authorization": "Bearer " + key})
-        r.raise_for_status()
-    except requests.RequestException as e:
-        raise RuntimeError("Çeviri isteği başarısız: " + redact(e)) from None
-    return r.json()["choices"][0]["message"]["content"]
+    for attempt in range(attempts):
+        try:
+            r = requests.post(base + "/chat/completions", json=body, timeout=timeout,
+                              headers={"Authorization": "Bearer " + key})
+        except requests.RequestException as e:
+            raise RuntimeError("Çeviri isteği başarısız: " + redact(e)) from None
+        wait = retry_wait(r.status_code, r.headers.get("retry-after"), attempt)
+        if wait is not None and attempt + 1 < attempts:
+            print("Çeviri API'si HTTP %d, %.0f sn sonra yeniden deneniyor…"
+                  % (r.status_code, wait), flush=True)
+            sleep(wait)
+            continue
+        if r.status_code >= 400:
+            raise RuntimeError("Çeviri isteği başarısız: HTTP %d" % r.status_code)
+        return r.json()["choices"][0]["message"]["content"] or ""
+    raise RuntimeError("Çeviri isteği başarısız.")
 
 
 def translate(segments, source_lang, chat_fn=chat):
