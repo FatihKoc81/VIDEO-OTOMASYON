@@ -1,0 +1,85 @@
+name: Dublaj (Kaggle GPU)
+run-name: "Dublaj ${{ inputs.job_id }}"
+
+# APEX uygulaması bu iş akışını başlatır ve run-name ile işi bulur.
+on:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: "12 haneli iş kimliği (APEX üretir)"
+        required: true
+      source_url:
+        description: "Doğrudan https:// MP4 bağlantısı"
+        required: true
+      source_lang:
+        description: "Kaynak dil kodu (ör. en); boş = otomatik"
+        required: false
+        default: ""
+      lipsync:
+        description: "Dudak senkronu (true/false)"
+        required: false
+        default: "true"
+      consent:
+        description: "Hak/izin ve XTTS ticari olmayan lisans onayı (true olmalı)"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kaggle-dublaj   # Kaggle'da aynı anda tek GPU işi
+  cancel-in-progress: false
+
+jobs:
+  dub:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Kaggle aracını kur
+        run: python -m pip install -q kaggle==1.6.17
+      - name: Kaggle işini hazırla
+        id: build
+        env:
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          JOB_ID: ${{ inputs.job_id }}
+          SOURCE_URL: ${{ inputs.source_url }}
+          SOURCE_LANG: ${{ inputs.source_lang }}
+          LIPSYNC: ${{ inputs.lipsync }}
+          CONSENT: ${{ inputs.consent }}
+          DUB_REF: ${{ vars.DUB_REF || 'main' }}
+        run: python scripts/kaggle_job.py build --out kernel
+      - name: Kaggle GPU'ya gönder
+        env:
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+        run: kaggle kernels push -p kernel
+      - name: Kaggle GPU'da dublaj (uzun sürer)
+        env:
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+        run: python scripts/kaggle_job.py wait "${{ steps.build.outputs.kernel_id }}"
+      - name: Sonucu indir
+        if: always() && steps.build.outputs.kernel_id != ''
+        env:
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+        run: |
+          mkdir -p kout
+          kaggle kernels output "${{ steps.build.outputs.kernel_id }}" -p kout || true
+          if [ -f kout/output/error.txt ]; then echo "Kaggle hatası:"; cat kout/output/error.txt; fi
+          ls -la kout/output || true
+          test -f kout/output/video_dublaj.mp4
+      - name: Videoyu sakla
+        uses: actions/upload-artifact@v4
+        with:
+          name: dublaj-${{ inputs.job_id }}
+          path: |
+            kout/output/video_dublaj.mp4
+            kout/output/dublaj_tr.srt
+            kout/output/dublaj.json
+          compression-level: 0
+          retention-days: 7

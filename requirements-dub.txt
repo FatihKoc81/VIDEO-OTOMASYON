@@ -1,0 +1,5 @@
+requests==2.32.3
+faster-whisper==1.1.1
+edge-tts==7.0.0
+transformers==4.46.3
+sentencepiece==0.2.0
