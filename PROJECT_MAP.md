@@ -11,7 +11,7 @@ Konu/senaryo → stok görüntü arama → seslendirme → FFmpeg ile dikey vide
 ## Kök dosyalar
 - `video_pipeline.py`: video üretim hattının Python giriş/iş akışı dosyası.
 - `requirements.txt`: Python bağımlılık listesi.
-- `dub_pipeline.py`: Türkçe dublaj hattı (Whisper → çeviri → edge-tts/OpenAI TTS → FFmpeg miks); `requirements-dub.txt`, `tests/test_dub_pipeline.py`, `.github/workflows/dub-video.yml` (elle tetiklenir, artifact `turkce-dublaj`).
+- `dub_pipeline.py`: Türkçe dublaj hattı, sıfır maliyet (Whisper → yerel NLLB çeviri → edge-tts → FFmpeg miks); `requirements-dub.txt`, `tests/test_dub_pipeline.py`, `.github/workflows/dub-video.yml` (elle tetiklenir, artifact `turkce-dublaj`).
 - `dub_clone.py` + `dub_gpu.ipynb`: oyuncunun kendi sesiyle dublaj (Demucs → Whisper → konuşmacı ayrımı → XTTS-v2 ses klonu) ve LatentSync dudak senkronu; Kaggle/Colab GPU'da çalışır, ticari olmayan kullanım. Testler: `tests/test_dub_clone.py`.
 - `README.md`: mevcut aşama ve sonraki geliştirme adımları.
 - `privacy.html`: gizlilik sayfası.

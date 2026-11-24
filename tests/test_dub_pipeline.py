@@ -56,6 +56,33 @@ class PureTests(unittest.TestCase):
         self.assertNotIn("sk-abcdef123456", dp.redact("hata sk-abcdef123456 Bearer xyz"))
         self.assertNotIn("xyz", dp.redact("Bearer xyz"))
 
+    def test_choose_translator_is_free_by_default(self):
+        self.assertEqual(dp.choose_translator({}), "local")
+        # Depodaki ücretli OpenAI anahtarı çeviriyi API'ye yöneltmemeli.
+        self.assertEqual(dp.choose_translator({"OPENAI_API_KEY": "sk-x"}), "local")
+        self.assertEqual(dp.choose_translator({"DUB_LLM_API_KEY": "gsk-x"}), "llm")
+        self.assertEqual(dp.choose_translator({"DUB_LLM_API_KEY": "x", "DUB_TRANSLATOR": "local"}),
+                         "local")
+        with self.assertRaises(ValueError):
+            dp.choose_translator({"DUB_TRANSLATOR": "paid"})
+
+    def test_llm_config_never_uses_openai_key(self):
+        old = {k: os.environ.pop(k, None) for k in ("DUB_LLM_API_KEY", "OPENAI_API_KEY")}
+        try:
+            os.environ["OPENAI_API_KEY"] = "sk-test"
+            with self.assertRaises(RuntimeError):
+                dp.llm_config()
+        finally:
+            os.environ.pop("OPENAI_API_KEY", None)
+            for k, v in old.items():
+                if v is not None:
+                    os.environ[k] = v
+
+    def test_local_translation_rejects_unknown_language(self):
+        with self.assertRaises(RuntimeError):
+            dp.translate_local([dp.Segment(0, 1, "x")], "xx")
+        self.assertEqual(dp.NLLB_CODES["en"], "eng_Latn")
+
     def test_stamp(self):
         self.assertEqual(dp.stamp(3725.5), "01:02:05,500")
 

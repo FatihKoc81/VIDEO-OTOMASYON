@@ -1,8 +1,9 @@
 """Türkçe dublaj hattı.
 
 Akış: kaynak video → ses çıkarma (FFmpeg) → yazıya dökme (faster-whisper, yerel, ücretsiz)
-→ Türkçeye çeviri (OpenAI uyumlu sohbet API'si) → Türkçe seslendirme (edge-tts ücretsiz
-veya OpenAI TTS) → zamanlamaya oturtma → orijinal sesi kısıp dublajı bindirme → MP4.
+→ Türkçeye çeviri (yerel NLLB-200, ücretsiz; isteğe bağlı ücretsiz API anahtarı) → Türkçe
+seslendirme (edge-tts, ücretsiz
+; hiçbir ücretli servis kullanılmaz) → zamanlamaya oturtma → orijinal sesi kısıp dublajı bindirme → MP4.
 
 Yalnızca hakkına sahip olduğunuz veya dublaj izni olan videoları kullanın.
 Anahtarlar yalnızca ortam değişkenlerinden okunur; hiçbir anahtar loglanmaz.
@@ -128,12 +129,68 @@ def merge_short(segments, min_len=1.2, max_gap=0.35, max_len=12.0):
 
 # ---------------------------------------------------------------- 3) çeviri
 def llm_config():
-    key = os.environ.get("DUB_LLM_API_KEY") or os.environ.get("OPENAI_API_KEY")
+    key = os.environ.get("DUB_LLM_API_KEY")
     if not key:
-        raise RuntimeError("Çeviri için DUB_LLM_API_KEY veya OPENAI_API_KEY gerekli.")
-    base = os.environ.get("DUB_LLM_BASE_URL", "https://api.openai.com/v1").rstrip("/")
-    model = os.environ.get("DUB_LLM_MODEL", "gpt-4o-mini")
+        raise RuntimeError("API ile çeviri için DUB_LLM_API_KEY gerekli.")
+    base = os.environ.get("DUB_LLM_BASE_URL", "https://api.groq.com/openai/v1").rstrip("/")
+    model = os.environ.get("DUB_LLM_MODEL", "llama-3.3-70b-versatile")
     return base, model, key
+
+
+# Whisper dil kodu → NLLB-200 dil kodu (yerel, ücretsiz çeviri)
+NLLB_CODES = {
+    "en": "eng_Latn", "de": "deu_Latn", "fr": "fra_Latn", "es": "spa_Latn", "it": "ita_Latn",
+    "pt": "por_Latn", "nl": "nld_Latn", "pl": "pol_Latn", "sv": "swe_Latn", "ro": "ron_Latn",
+    "ru": "rus_Cyrl", "uk": "ukr_Cyrl", "el": "ell_Grek", "ar": "arb_Arab", "fa": "pes_Arab",
+    "he": "heb_Hebr", "hi": "hin_Deva", "ur": "urd_Arab", "ja": "jpn_Jpan", "ko": "kor_Hang",
+    "zh": "zho_Hans", "id": "ind_Latn", "az": "azj_Latn", "ka": "kat_Geor", "bg": "bul_Cyrl",
+    "kk": "kaz_Cyrl", "uz": "uzn_Latn", "ku": "kmr_Latn", "sq": "als_Latn", "bs": "bos_Latn",
+}
+NLLB_MODEL = os.environ.get("DUB_NLLB_MODEL", "facebook/nllb-200-distilled-600M")
+
+
+def choose_translator(env=None):
+    """Bütçe yok: anahtar verilmedikçe yerel NLLB kullanılır, hiçbir ücretli API'ye gidilmez."""
+    env = os.environ if env is None else env
+    mode = env.get("DUB_TRANSLATOR", "auto")
+    if mode not in ("auto", "local", "llm"):
+        raise ValueError("DUB_TRANSLATOR auto, local veya llm olmalı.")
+    if mode == "auto":
+        return "llm" if env.get("DUB_LLM_API_KEY") else "local"
+    return mode
+
+
+def translate_local(segments, source_lang, batch=16):
+    code = NLLB_CODES.get(source_lang)
+    if not code:
+        raise RuntimeError("Yerel çeviri '%s' dilini desteklemiyor; --source-lang ver veya "
+                           "DUB_LLM_API_KEY ile ücretsiz bir API anahtarı kullan." % source_lang)
+    import torch
+    from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    tok = AutoTokenizer.from_pretrained(NLLB_MODEL, src_lang=code)
+    model = AutoModelForSeq2SeqLM.from_pretrained(NLLB_MODEL).to(device).eval()
+    target = tok.convert_tokens_to_ids("tur_Latn")
+    for start in range(0, len(segments), batch):
+        part = segments[start:start + batch]
+        enc = tok([s.text for s in part], return_tensors="pt", padding=True, truncation=True,
+                  max_length=400).to(device)
+        with torch.inference_mode():
+            out = model.generate(**enc, forced_bos_token_id=target, num_beams=4,
+                                 max_new_tokens=256)
+        for s, tr in zip(part, tok.batch_decode(out, skip_special_tokens=True)):
+            s.tr = tr.strip() or s.text
+    del model
+    if device == "cuda":
+        torch.cuda.empty_cache()
+    return segments
+
+
+def translate_any(segments, source_lang):
+    if choose_translator() == "llm":
+        return translate(segments, source_lang)
+    return translate_local(segments, source_lang)
 
 
 def build_translate_messages(items, source_lang):
@@ -197,21 +254,6 @@ def tts_edge(text, dst, voice):
     async def go():
         await edge_tts.Communicate(text, voice, proxy=os.environ.get("HTTPS_PROXY")).save(str(dst))
     asyncio.run(go())
-
-
-def tts_openai(text, dst, voice):
-    key = os.environ.get("OPENAI_API_KEY")
-    if not key:
-        raise RuntimeError("OpenAI TTS için OPENAI_API_KEY gerekli.")
-    body = {"model": "gpt-4o-mini-tts", "voice": voice, "response_format": "mp3", "input": text,
-            "instructions": "Türkçe konuş. Doğal, akıcı bir dublaj sanatçısı gibi oku."}
-    try:
-        r = requests.post("https://api.openai.com/v1/audio/speech", json=body, timeout=180,
-                          headers={"Authorization": "Bearer " + key})
-        r.raise_for_status()
-    except requests.RequestException as e:
-        raise RuntimeError("OpenAI TTS başarısız: " + redact(e)) from None
-    Path(dst).write_bytes(r.content)
 
 
 def speed_for(duration, slot, max_speed=MAX_SPEEDUP):
@@ -339,7 +381,6 @@ def main(argv=None):
     ap.add_argument("--source-lang", default=os.environ.get("DUB_SOURCE_LANG", ""),
                     help="Kaynak dil kodu (ör. en); boşsa otomatik algılanır")
     ap.add_argument("--whisper-model", default=os.environ.get("DUB_WHISPER_MODEL", "small"))
-    ap.add_argument("--tts", choices=["edge", "openai"], default=os.environ.get("DUB_TTS", "edge"))
     ap.add_argument("--voice", default=os.environ.get("DUB_VOICE", ""))
     ap.add_argument("--original-volume", type=float,
                     default=float(os.environ.get("DUB_ORIGINAL_VOLUME", "0.12")))
@@ -348,8 +389,8 @@ def main(argv=None):
     a = ap.parse_args(argv)
 
     OUT.mkdir(parents=True, exist_ok=True)
-    voice = a.voice or ("tr-TR-AhmetNeural" if a.tts == "edge" else "onyx")
-    tts_fn = tts_edge if a.tts == "edge" else tts_openai
+    voice = a.voice or "tr-TR-AhmetNeural"
+    tts_fn = tts_edge
 
     video = fetch_source(a.source)
     total = media_duration(video)
@@ -369,7 +410,7 @@ def main(argv=None):
         for s in segments:
             s.tr = s.text
     else:
-        translate(segments, lang)
+        translate_any(segments, lang)
 
     track, places, durs = voice_track(segments, total, tts_fn, voice, OUT / "parts")
     srt = write_srt(segments, places, durs, OUT / "dublaj_tr.srt")
@@ -377,7 +418,7 @@ def main(argv=None):
                 a.burn_subtitles)
     (OUT / "dublaj.json").write_text(json.dumps({
         "source_language": lang, "segments": len(segments), "seconds": round(total, 1),
-        "tts": a.tts, "voice": voice,
+        "tts": "edge", "voice": voice,
         "lines": [{"start": round(p, 2), "src": s.text, "tr": s.tr}
                   for s, p in zip(segments, places)],
     }, ensure_ascii=False, indent=2), encoding="utf-8")

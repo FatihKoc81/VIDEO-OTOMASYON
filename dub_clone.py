@@ -231,7 +231,7 @@ def main(argv=None):
         for s in segments:
             s.tr = s.text
     else:
-        dp.translate(segments, lang)
+        dp.translate_any(segments, lang)
 
     print("5/6 Oyuncuların sesiyle Türkçe seslendiriliyor…", flush=True)
     track, places, durs = dp.voice_track(
