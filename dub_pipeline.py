@@ -32,6 +32,7 @@ class Segment:
     end: float
     text: str
     tr: str = ""
+    speaker: int = 0
 
 
 # ---------------------------------------------------------------- yardımcılar
@@ -96,7 +97,15 @@ def extract_wav(video, dst):
 def transcribe(wav, model_size="small", language=None):
     from faster_whisper import WhisperModel
 
-    model = WhisperModel(model_size, device="cpu", compute_type="int8")
+    model = None
+    try:
+        import ctranslate2
+
+        if ctranslate2.get_cuda_device_count() > 0:
+            model = WhisperModel(model_size, device="cuda", compute_type="float16")
+    except Exception as e:  # GPU kitaplıkları uyumsuzsa CPU ile devam et
+        print("UYARI: Whisper GPU açılamadı, CPU kullanılıyor: %s" % redact(e), flush=True)
+    model = model or WhisperModel(model_size, device="cpu", compute_type="int8")
     segs, info = model.transcribe(str(wav), language=language or None, vad_filter=True,
                                   beam_size=5)
     out = [Segment(s.start, s.end, s.text.strip()) for s in segs if s.text.strip()]
@@ -236,12 +245,13 @@ def silence(dst, seconds):
     return dst
 
 
-def voice_track(segments, total, tts_fn, voice, workdir):
+def voice_track(segments, total, tts_fn, voice, workdir, voice_of=None, ext="mp3"):
+    """voice_of(segment) verilirse her satırın sesi ondan alınır (ör. konuşmacıya göre)."""
     workdir.mkdir(parents=True, exist_ok=True)
     clips, durs = [], []
     for i, s in enumerate(segments):
-        raw = workdir / ("tts_%04d.mp3" % i)
-        tts_fn(s.tr, raw, voice)
+        raw = workdir / ("tts_%04d.%s" % (i, ext))
+        tts_fn(s.tr, raw, voice_of(s) if voice_of else voice)
         slot_end = segments[i + 1].start if i + 1 < len(segments) else total
         speed = speed_for(media_duration(raw), slot_end - s.start)
         wav = to_wav(raw, workdir / ("tts_%04d.wav" % i), speed)
@@ -273,27 +283,51 @@ def write_srt(segments, places, durs, dst):
     return dst
 
 
-def mix(video, track, srt, dst, original_volume=0.12, burn=False):
-    inputs = ["-i", str(video), "-i", str(track)]
-    if has_audio(video) and original_volume > 0:
+AI_LABEL = "Yapay zekâ ile dublajlandı"
+FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+
+
+def _filter_path(p):
+    return str(Path(p).resolve()).replace("\\", "/").replace(":", "\\:").replace("'", "\\'")
+
+
+def mix(video, track, srt, dst, original_volume=0.12, burn=False, background=None,
+        label=None):
+    """Görüntü + Türkçe ses (+ ayrıştırılmış müzik/efekt veya kısılmış orijinal ses).
+
+    background: konuşmasız arka plan sesi (Demucs). Verilirse orijinal ses kullanılmaz.
+    label: verilirse köşeye küçük, kalıcı bir yazı eklenir (yapay zekâ etiketi).
+    """
+    cmd = ["ffmpeg", "-y", "-i", str(video), "-i", str(track)]
+    if background:
+        cmd += ["-i", str(background)]
+        fc = ("[2:a]aresample=48000[bg];[1:a]aresample=48000[fg];"
+              "[bg][fg]amix=inputs=2:duration=first:normalize=0[a]")
+    elif has_audio(video) and original_volume > 0:
         fc = ("[0:a]aresample=48000,volume=%.3f[bg];[1:a]aresample=48000[fg];"
               "[bg][fg]amix=inputs=2:duration=first:normalize=0[a]" % original_volume)
     else:
         fc = "[1:a]aresample=48000[a]"
-    cmd = ["ffmpeg", "-y", *inputs]
+    vf = []
     if burn:
         style = ("FontName=DejaVu Sans,FontSize=16,Bold=1,PrimaryColour=&H00FFFFFF,"
                  "OutlineColour=&H00101010,BorderStyle=1,Outline=2,Alignment=2,MarginV=40")
-        sub = str(Path(srt).resolve()).replace("\\", "/").replace(":", "\\:").replace("'", "\\'")
-        fc += ";[0:v]subtitles='%s':force_style='%s'[v]" % (sub, style)
+        vf.append("subtitles='%s':force_style='%s'" % (_filter_path(srt), style))
+    if label:
+        font = ("fontfile='%s':" % _filter_path(FONT)) if Path(FONT).exists() else ""
+        vf.append("drawtext=%stext='%s':fontcolor=white@0.85:fontsize=h/34:"
+                  "box=1:boxcolor=black@0.45:boxborderw=8:x=w*0.03:y=h*0.03" % (font, label))
+    if vf:
+        fc += ";[0:v]" + ",".join(vf) + "[v]"
         cmd += ["-filter_complex", fc, "-map", "[v]", "-map", "[a]",
                 "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p"]
     else:
+        n = 3 if background else 2
         cmd += ["-i", str(srt), "-filter_complex", fc, "-map", "0:v:0", "-map", "[a]",
-                "-map", "2:s:0", "-c:v", "copy", "-c:s", "mov_text",
+                "-map", "%d:s:0" % n, "-c:v", "copy", "-c:s", "mov_text",
                 "-metadata:s:s:0", "language=tur"]
     cmd += ["-c:a", "aac", "-b:a", "160k", "-metadata:s:a:0", "language=tur",
-            "-movflags", "+faststart", str(dst)]
+            "-metadata", "comment=" + AI_LABEL, "-t", "%.3f" % media_duration(video), "-movflags", "+faststart", str(dst)]
     run(cmd)
     return dst
 
