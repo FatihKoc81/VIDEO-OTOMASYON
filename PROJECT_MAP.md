@@ -11,6 +11,7 @@ Konu/senaryo → stok görüntü arama → seslendirme → FFmpeg ile dikey vide
 ## Kök dosyalar
 - `video_pipeline.py`: video üretim hattının Python giriş/iş akışı dosyası.
 - `requirements.txt`: Python bağımlılık listesi.
+- `dub_pipeline.py`: Türkçe dublaj hattı (Whisper → çeviri → edge-tts/OpenAI TTS → FFmpeg miks); `requirements-dub.txt`, `tests/test_dub_pipeline.py`, `.github/workflows/dub-video.yml` (elle tetiklenir, artifact `turkce-dublaj`).
 - `README.md`: mevcut aşama ve sonraki geliştirme adımları.
 - `privacy.html`: gizlilik sayfası.
 - `terms.html`: kullanım koşulları.
