@@ -60,13 +60,3 @@ yapılır; hiçbir anahtar çekirdeğe yazılmaz.
 Gerekli GitHub secret'ları: `KAGGLE_USERNAME`, `KAGGLE_KEY` (kaggle.com → Settings → API →
 Create New Token; ücretsiz). Kaggle hesabında telefon doğrulaması yapılmış olmalı (GPU ve
 internet için). İsteğe bağlı repository variable `DUB_REF` (varsayılan `main`).
-
-## APEX'ten otomatik dublaj (`dub-kaggle.yml`)
-APEX uygulamasının **Dublaj** ekranı bu iş akışını başlatır. İş akışı `scripts/kaggle_job.py`
-ile kullanıcının Kaggle hesabında özel bir GPU çekirdeği (`dublaj-<job_id>`) açar, bitmesini
-bekler, videoyu `dublaj-<job_id>` artifact'i olarak 7 gün saklar. Çeviri Kaggle'da yerel NLLB ile
-yapılır; hiçbir anahtar çekirdeğe yazılmaz.
-
-Gerekli GitHub secret'ları: `KAGGLE_USERNAME`, `KAGGLE_KEY` (kaggle.com → Settings → API →
-Create New Token; ücretsiz). Kaggle hesabında telefon doğrulaması yapılmış olmalı (GPU ve
-internet için). İsteğe bağlı repository variable `DUB_REF` (varsayılan `main`).
