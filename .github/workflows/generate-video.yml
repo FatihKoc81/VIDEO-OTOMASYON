@@ -1,7 +1,31 @@
 name: Generate Turkish short video
+run-name: "${{ inputs.job_id != '' && format('Video {0}', inputs.job_id) || 'Türkçe kısa video' }}"
 
+# APEX uygulamasının Video paneli bu iş akışını başlatır ve run-name ile işi bulur.
+# Elle de çalışır (tüm girişler boş bırakılabilir).
 on:
   workflow_dispatch:
+    inputs:
+      job_id:
+        description: "12 haneli iş kimliği (APEX üretir); elle çalıştırırken boş bırak"
+        required: false
+        default: ""
+      prompt:
+        description: "Konu veya talimat; boş = ilgi çekici bir konu seçilir"
+        required: false
+        default: ""
+      aspect:
+        description: "9:16 veya 16:9"
+        required: false
+        default: "9:16"
+      duration:
+        description: "Saniye (15-180)"
+        required: false
+        default: "60"
+      voice:
+        description: "erkek veya kadın"
+        required: false
+        default: "erkek"
 
 permissions:
   contents: read
@@ -9,7 +33,7 @@ permissions:
 jobs:
   generate:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -20,14 +44,19 @@ jobs:
           python -m pip install -r requirements.txt
       - name: Generate video
         env:
+          VIDEO_PROMPT: ${{ inputs.prompt }}
+          VIDEO_ASPECT: ${{ inputs.aspect }}
+          VIDEO_DURATION: ${{ inputs.duration }}
+          VIDEO_VOICE: ${{ inputs.voice }}
+          DUB_LLM_API_KEY: ${{ secrets.DUB_LLM_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
         run: python video_pipeline.py
       - name: Upload generated video
         uses: actions/upload-artifact@v4
         with:
-          name: turkce-kisa-video
+          name: video-${{ inputs.job_id != '' && inputs.job_id || github.run_id }}
           path: |
             output/video.mp4
             output/metadata.json
-          retention-days: 3
+          retention-days: 7
