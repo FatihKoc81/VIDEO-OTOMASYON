@@ -60,3 +60,11 @@ yapılır; hiçbir anahtar çekirdeğe yazılmaz.
 Gerekli GitHub secret'ları: `KAGGLE_USERNAME`, `KAGGLE_KEY` (kaggle.com → Settings → API →
 Create New Token; ücretsiz). Kaggle hesabında telefon doğrulaması yapılmış olmalı (GPU ve
 internet için). İsteğe bağlı repository variable `DUB_REF` (varsayılan `main`).
+
+## APEX'ten video üretimi (`generate-video.yml`)
+APEX uygulamasında sağ üstteki **V** düğmesi Video panelini açar (eski NEXORA). Panel konu/talimat,
+oran (9:16 / 16:9), süre ve ses seçip bu iş akışını `job_id` ile başlatır; iş `Video <job_id>` adıyla
+bulunur, video `video-<job_id>` artifact'i olarak 7 gün saklanır.
+`video_pipeline.py`: senaryo ücretsiz Groq'tan (`DUB_LLM_API_KEY`, yoksa `OPENAI_API_KEY`), seslendirme
+edge-tts (ücretsiz), görüntüler Pixabay'den (`PIXABAY_API_KEY`; yoksa koyu arka plan + altyazı).
+Otomatik yayın yoktur.
