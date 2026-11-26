@@ -2,7 +2,9 @@ name: Generate Turkish short video
 run-name: "${{ inputs.job_id != '' && format('Video {0}', inputs.job_id) || 'Türkçe kısa video' }}"
 
 # APEX uygulamasının Video paneli bu iş akışını başlatır ve run-name ile işi bulur.
-# Elle de çalışır (tüm girişler boş bırakılabilir).
+# Elle de çalışır (tüm girişler boş bırakılabilir). publish=true ise video sahibin kendi TikTok,
+# Instagram Reels ve YouTube Shorts hesaplarına yüklenir (scripts/publish.py, secret'ı olanlar).
+# Saatlik otomatik yayın `autopilot.yml`'dir ve bu iş akışını workflow_call ile çağırır.
 on:
   workflow_dispatch:
     inputs:
@@ -26,6 +28,20 @@ on:
         description: "erkek veya kadın"
         required: false
         default: "erkek"
+      publish:
+        description: "Hesaplarıma yükle (TikTok, Reels, Shorts)"
+        type: boolean
+        required: false
+        default: false
+  workflow_call:
+    inputs:
+      job_id: { type: string, required: false, default: "" }
+      prompt: { type: string, required: false, default: "" }
+      aspect: { type: string, required: false, default: "9:16" }
+      duration: { type: string, required: false, default: "60" }
+      voice: { type: string, required: false, default: "erkek" }
+      publish: { type: boolean, required: false, default: false }
+      mode: { type: string, required: false, default: "" }
 
 permissions:
   contents: read
@@ -43,7 +59,9 @@ jobs:
           sudo apt-get install -y ffmpeg fonts-dejavu-core
           python -m pip install -r requirements.txt
       - name: Generate video
+        id: gen
         env:
+          VIDEO_MODE: ${{ inputs.mode }}
           VIDEO_PROMPT: ${{ inputs.prompt }}
           VIDEO_ASPECT: ${{ inputs.aspect }}
           VIDEO_DURATION: ${{ inputs.duration }}
@@ -52,11 +70,29 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
         run: python video_pipeline.py
+      - name: Yayınla (TikTok, Reels, Shorts)
+        if: ${{ inputs.publish }}
+        env:
+          PUBLISH_TARGETS: ${{ vars.PUBLISH_TARGETS }}
+          TIKTOK_CLIENT_KEY: ${{ secrets.TIKTOK_CLIENT_KEY }}
+          TIKTOK_CLIENT_SECRET: ${{ secrets.TIKTOK_CLIENT_SECRET }}
+          TIKTOK_REFRESH_TOKEN: ${{ secrets.TIKTOK_REFRESH_TOKEN }}
+          TIKTOK_PRIVACY: ${{ vars.TIKTOK_PRIVACY }}
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
+          YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
+          YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
+          YT_PRIVACY: ${{ vars.YT_PRIVACY }}
+        run: python scripts/publish.py
       - name: Upload generated video
+        if: ${{ always() && steps.gen.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
           name: video-${{ inputs.job_id != '' && inputs.job_id || github.run_id }}
           path: |
             output/video.mp4
             output/metadata.json
+            output/publish.json
+          if-no-files-found: warn
           retention-days: 7

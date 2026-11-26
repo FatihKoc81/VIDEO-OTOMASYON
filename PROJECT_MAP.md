@@ -14,6 +14,7 @@ Konu/senaryo → stok görüntü arama → seslendirme → FFmpeg ile dikey vide
 - `dub_pipeline.py`: Türkçe dublaj hattı, sıfır maliyet (Whisper → yerel NLLB çeviri → edge-tts → FFmpeg miks); `requirements-dub.txt`, `tests/test_dub_pipeline.py`, `.github/workflows/dub-video.yml` (elle tetiklenir, artifact `turkce-dublaj`).
 - `scripts/kaggle_job.py` + `.github/workflows/dub-kaggle.yml`: APEX'in başlattığı otomatik dublaj; Kaggle GPU çekirdeği `dublaj-<job_id>`, artifact `dublaj-<job_id>` (7 gün). Secret: `KAGGLE_USERNAME`, `KAGGLE_KEY`.
 - `dub_clone.py` + `dub_gpu.ipynb`: oyuncunun kendi sesiyle dublaj (Demucs → Whisper → konuşmacı ayrımı → XTTS-v2 ses klonu) ve LatentSync dudak senkronu; Kaggle/Colab GPU'da çalışır, ticari olmayan kullanım. Testler: `tests/test_dub_clone.py`.
+- `scripts/publish.py` + `.github/workflows/autopilot.yml`: TikTok/Reels/Shorts yükleme ve saatlik otomatik video (sessiz video reddedilir); `scripts/get_tokens.py` bir kerelik refresh token. Testler: `tests/test_publish.py`.
 - `README.md`: mevcut aşama ve sonraki geliştirme adımları.
 - `privacy.html`: gizlilik sayfası.
 - `terms.html`: kullanım koşulları.
@@ -24,7 +25,7 @@ Konu/senaryo → stok görüntü arama → seslendirme → FFmpeg ile dikey vide
 - GitHub Actions üzerinde FFmpeg ile örnek MP4 üretimi.
 - Çıktı Actions artifact olarak saklanır.
 - Aşama 1 ücretli API çağrısı yapmaz.
-- Saatlik otomatik yayınlama kapalıdır.
+- Saatlik otomatik yayın `autopilot.yml` (platform secret'ları eklenince çalışır).
 
 ## Sonraki aşamalar
 1. Türkçe konu ve senaryo üretimi.
