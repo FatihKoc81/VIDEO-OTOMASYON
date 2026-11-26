@@ -1,0 +1,46 @@
+name: Saatlik otomatik video
+run-name: "Otomatik video"
+
+# Her saat yeni bir video üretir ve sahibin TikTok, Instagram Reels ve YouTube Shorts hesaplarına
+# yükler (secret'ı olan platformlar). APEX'in Video panelindeki "Saatlik otomatik" anahtarı bu iş
+# akışını GitHub'da açar/kapatır (Actions → bu iş akışı → Disable ile de durdurulur).
+# Konu: repository variable AUTOPILOT_TOPIC (boşsa her saat başka bir alan).
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: autopilot
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.c.outputs.ready }}
+    steps:
+      - id: c
+        env:
+          T: ${{ secrets.TIKTOK_REFRESH_TOKEN }}
+          I: ${{ secrets.IG_ACCESS_TOKEN }}
+          Y: ${{ secrets.YT_REFRESH_TOKEN }}
+        run: |
+          if [ -n "$T$I$Y" ]; then echo "ready=true" >> "$GITHUB_OUTPUT"; else
+            echo "::warning::Hiçbir platform secret'ı yok (TIKTOK_*, IG_*, YT_*); video üretilmedi."
+            echo "ready=false" >> "$GITHUB_OUTPUT"; fi
+  video:
+    needs: check
+    if: needs.check.outputs.ready == 'true'
+    uses: ./.github/workflows/generate-video.yml
+    with:
+      prompt: ${{ vars.AUTOPILOT_TOPIC }}
+      aspect: "9:16"
+      duration: ${{ vars.AUTOPILOT_SECONDS || '45' }}
+      voice: ${{ vars.AUTOPILOT_VOICE || 'erkek' }}
+      publish: true
+      mode: auto
+    secrets: inherit

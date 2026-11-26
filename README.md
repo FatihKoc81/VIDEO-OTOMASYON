@@ -67,4 +67,48 @@ oran (9:16 / 16:9), süre ve ses seçip bu iş akışını `job_id` ile başlat�
 bulunur, video `video-<job_id>` artifact'i olarak 7 gün saklanır.
 `video_pipeline.py`: senaryo ücretsiz Groq'tan (`DUB_LLM_API_KEY`, yoksa `OPENAI_API_KEY`), seslendirme
 edge-tts (ücretsiz), görüntüler Pixabay'den (`PIXABAY_API_KEY`; yoksa koyu arka plan + altyazı).
-Otomatik yayın yoktur.
+Panelde **Yayınla** açıksa video hesaplara da yüklenir (aşağıya bak).
+
+## Hesaplara otomatik yükleme (TikTok, Instagram Reels, YouTube Shorts)
+- `scripts/publish.py` yalnızca aynı çalışmada üretilen `output/video.mp4`'yi yükler; sessiz veya 5 sn'den
+  kısa videoyu reddeder (ortalama ses > −50 dB). Videolar "yapay zekâ ile üretildi" etiketiyle gider
+  (TikTok `is_aigc`, YouTube `containsSyntheticMedia`, açıklamada not).
+- `generate-video.yml` girişi `publish=true` ise yükler (APEX Video panelindeki **Yayınla** karosu).
+- `autopilot.yml` **Saatlik otomatik video**: her saat :17'de (UTC) 45 sn'lik dikey video üretir ve yükler.
+  Hiç platform secret'ı yoksa video üretmez. APEX'teki "Saatlik otomatik" anahtarı bu iş akışını açar/kapatır.
+  Repository variables (isteğe bağlı): `AUTOPILOT_TOPIC` (boşsa her saat başka alan), `AUTOPILOT_SECONDS`,
+  `AUTOPILOT_VOICE`, `PUBLISH_TARGETS` (ör. `tiktok,youtube`), `TIKTOK_PRIVACY`, `YT_PRIVACY`.
+
+Secret'lar (Settings → Secrets and variables → Actions); hangisi varsa o platforma yüklenir:
+
+| Platform | Secret | Nereden |
+| --- | --- | --- |
+| TikTok | `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`, `TIKTOK_REFRESH_TOKEN` | developers.tiktok.com uygulaması, Content Posting API (Direct Post) + `video.publish`; token: `python scripts/get_tokens.py tiktok …` |
+| Reels | `IG_ACCESS_TOKEN` (`IG_USER_ID` isteğe bağlı) | developers.facebook.com → Instagram API (Instagram ile giriş), Profesyonel hesap, `instagram_business_content_publish`; uzun ömürlü token 60 gün |
+| Shorts | `YT_CLIENT_ID`, `YT_CLIENT_SECRET`, `YT_REFRESH_TOKEN` | Google Cloud → YouTube Data API v3, OAuth istemcisi (Masaüstü); token: `python scripts/get_tokens.py youtube …` |
+
+Platform kısıtları: TikTok denetimden (audit) geçmemiş uygulamada videolar yalnız **SELF_ONLY** (gizli)
+yayınlanır; YouTube'da doğrulanmamış API projesinin yüklemeleri **özel** kilitlenir. Herkese açık yayın için
+iki platformun da uygulama incelemesi gerekir (`privacy.html`, `terms.html` bunun için var).
+
+## Hesaplara otomatik yükleme (TikTok, Instagram Reels, YouTube Shorts)
+- `scripts/publish.py` yalnızca aynı çalışmada üretilen `output/video.mp4`'yi yükler; sessiz veya 5 sn'den
+  kısa videoyu reddeder (ortalama ses > −50 dB). Videolar "yapay zekâ ile üretildi" etiketiyle gider
+  (TikTok `is_aigc`, YouTube `containsSyntheticMedia`, açıklamada not).
+- `generate-video.yml` girişi `publish=true` ise yükler (APEX Video panelindeki **Yayınla** karosu).
+- `autopilot.yml` **Saatlik otomatik video**: her saat :17'de 45 sn'lik dikey video üretir ve yükler.
+  Hiç platform secret'ı yoksa video üretmez. APEX'teki "Saatlik otomatik" anahtarı bu iş akışını açar/kapatır.
+  Repository variables (isteğe bağlı): `AUTOPILOT_TOPIC` (boşsa her saat başka alan), `AUTOPILOT_SECONDS`,
+  `AUTOPILOT_VOICE`, `PUBLISH_TARGETS` (ör. `tiktok,youtube`), `TIKTOK_PRIVACY`, `YT_PRIVACY`.
+
+Secret'lar (Settings → Secrets and variables → Actions); hangisi varsa o platforma yüklenir:
+
+| Platform | Secret | Nereden |
+| --- | --- | --- |
+| TikTok | `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`, `TIKTOK_REFRESH_TOKEN` | developers.tiktok.com uygulaması, Content Posting API (Direct Post) + `video.publish`; token: `python scripts/get_tokens.py tiktok …` |
+| Reels | `IG_ACCESS_TOKEN` (`IG_USER_ID` isteğe bağlı) | developers.facebook.com → Instagram API (Instagram ile giriş), Profesyonel hesap, `instagram_business_content_publish`; uzun ömürlü token 60 gün |
+| Shorts | `YT_CLIENT_ID`, `YT_CLIENT_SECRET`, `YT_REFRESH_TOKEN` | Google Cloud → YouTube Data API v3, OAuth istemcisi (Masaüstü); token: `python scripts/get_tokens.py youtube …` |
+
+Platform kısıtları: TikTok denetimden (audit) geçmemiş uygulamada videolar yalnız **SELF_ONLY** (gizli)
+yayınlanır; YouTube'da doğrulanmamış API projesinin yüklemeleri **özel** kilitlenir. Herkese açık yayın için
+iki platformun da uygulama incelemesi gerekir (`privacy.html`, `terms.html` bunun için var).

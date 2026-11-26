@@ -40,8 +40,31 @@ def word_range(duration):
     return max(25, round(target * 0.85)), max(30, round(target * 1.05))
 
 
-def story_prompt(cfg):
+# Saatlik otomatik yayında (VIDEO_MODE=auto, konu boş) her saat başka bir alan seçilir; aynı
+# konunun art arda gelmesini önler.
+AUTO_TOPICS = (
+    "Tarihte az bilinen, doğrulanabilir bir olay",
+    "Günlük hayatta işe yarayan bir bilim gerçeği",
+    "Otomobil dünyasından şaşırtıcı ama doğru bir bilgi",
+    "Uzay ve gökyüzü hakkında doğrulanabilir bir merak konusu",
+    "Teknolojinin bir icadının ortaya çıkış hikâyesi",
+    "Hayvanlar dünyasından gerçek ve şaşırtıcı bir davranış",
+    "Türkiye'nin bir şehrine ait az bilinen gerçek bir bilgi",
+    "İnsan beyni ve psikolojisiyle ilgili kanıtlanmış bir bulgu",
+    "Dünyadan ilginç ama doğru bir coğrafya bilgisi",
+    "Para ve ekonomiyle ilgili günlük hayata dokunan doğru bir bilgi",
+)
+
+
+def auto_topic(hour):
+    return AUTO_TOPICS[hour % len(AUTO_TOPICS)]
+
+
+def story_prompt(cfg, hour=None):
     lo, hi = word_range(cfg["duration"])
+    if not cfg["prompt"] and os.environ.get("VIDEO_MODE", "").strip() == "auto":
+        import time
+        cfg = {**cfg, "prompt": auto_topic(time.gmtime().tm_hour if hour is None else hour)}
     topic = cfg["prompt"] or "Tarih, teknoloji, genel kültür, otomobil veya ilginç bilgiler arasından özgün, doğrulanabilir bir konu seç."
     shape = "yatay (16:9) YouTube videosu" if cfg["aspect"] == "16:9" else "dikey (9:16) kısa video (TikTok, Reels, Shorts)"
     return (
